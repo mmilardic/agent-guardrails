@@ -1,0 +1,48 @@
+name: Tests
+
+# PRs only: runs when a PR to develop/main is opened, reopened, or gets new commits (the
+# default pull_request activity types). GitHub tests the simulated MERGE of the PR into its
+# base, so the merged result is already covered — re-running on push to develop/main would
+# only repeat it, and a push to main is the deployment, which must never wait on tests.
+on:
+  pull_request:
+    branches:
+      - develop
+      - main
+
+# One run per PR: pushing again cancels the run still testing the previous commit, which is
+# already obsolete. Saves Actions minutes and returns the answer for the newest commit sooner.
+# Keyed on the PR number, not the head branch — one branch can have two open PRs (the same fix
+# raised against develop and against main), and keying on the branch would let them cancel each
+# other, leaving a PR showing a cancelled check for a commit that was never actually tested.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+# Nothing here writes to the repo; the job only needs to read the code it tests.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npm run gen:prisma
+
+      - name: Typecheck
+        run: npx tsc -p tsconfig.build.json --noEmit
+
+      - name: Run tests
+        run: npm test

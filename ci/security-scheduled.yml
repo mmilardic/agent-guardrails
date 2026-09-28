@@ -1,0 +1,56 @@
+name: Security Review (Scheduled)
+
+on:
+  schedule:
+    - cron: "0 6 1 * *" # 06:00 UTC on the 1st of each month
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: "Scan scope"
+        type: choice
+        options: [full-repo, last-24h]
+        default: full-repo
+
+permissions:
+  contents: read
+  issues: write
+  id-token: write
+
+jobs:
+  scheduled-security-review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 0
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            SCOPE: ${{ github.event.inputs.scope || 'full-repo' }}
+
+            You are performing a periodic security audit of this NestJS +
+            Prisma backend (develop branch). Apply the rules in
+            .github/security/scan-instructions.md, with special attention to
+            multi-tenant (Prisma tenantId) data-isolation bypasses.
+
+            This is a full audit of existing code, not a diff review. Review the
+            application source under src/, focusing on the highest-risk areas:
+            controllers and resolvers, services that run Prisma queries, auth
+            guards and middleware, and any raw SQL. Be efficient - prioritise
+            those areas rather than reading every file.
+
+            Reporting:
+            - If you find one or more issues, ensure a "security" label exists
+              (create it with `gh label create security --color B60205 --force`),
+              then open ONE issue with `gh issue create`, titled
+              "Monthly security audit — <YYYY-MM-DD>", labeled "security".
+              In the body, list each finding with: severity (CRITICAL/HIGH/
+              MEDIUM/LOW), file:line, the exploit, and the suggested fix.
+            - If there are no findings, do not open an issue. Print "No findings".
+
+          claude_args: |
+            --model claude-sonnet-4-6 --allowedTools "Read,Grep,Glob,Bash(git:*),Bash(gh issue:*),Bash(gh label:*),Bash(cat:*)"
